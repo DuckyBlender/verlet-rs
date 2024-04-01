@@ -1,8 +1,9 @@
 use macroquad::prelude::*;
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
-const RADIUS: f32 = 10.0;
+const RADIUS: f32 = 5.0;
 const CONSTRAINT_RADIUS: f32 = 250.0;
+const SUBSTEPS: u32 = 10;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VerletObject {
@@ -52,10 +53,13 @@ impl Solver {
     }
 
     pub fn update(&mut self, objects: &mut [VerletObject], dt: f32) {
-        Self::apply_gravity(objects, &self.gravity);
-        Self::apply_constraints(objects);
-        Self::solve_collisions(objects);
-        Self::update_positions(objects, dt);
+        let sub_dt = dt / SUBSTEPS as f32;
+        for _ in 0..SUBSTEPS {
+            Self::apply_gravity(objects, &self.gravity);
+            Self::apply_constraints(objects);
+            Self::solve_collisions(objects);
+            Self::update_positions(objects, sub_dt);
+        }
     }
 
     fn apply_gravity(objects: &mut [VerletObject], gravity: &Vec2) {
@@ -65,9 +69,9 @@ impl Solver {
     }
 
     fn update_positions(objects: &mut [VerletObject], dt: f32) {
-        for object in objects.iter_mut() {
+        objects.par_iter_mut().for_each(|object| {
             object.update_position(dt);
-        }
+        });
     }
 
     fn apply_constraints(objects: &mut [VerletObject]) {
@@ -123,7 +127,7 @@ async fn main() {
         // Add a point
         if is_mouse_button_down(MouseButton::Left) {
             let current_time = get_time();
-            if current_time - last_mouse_input > 0.1 {
+            if current_time - last_mouse_input > 0.01 {
                 last_mouse_input = current_time;
                 let mouse_position = mouse_position();
 
