@@ -110,14 +110,28 @@ async fn main() {
     ))];
 
     let mut solver = Solver::new();
+    let mut last_mouse_input: f64 = 0.0;
 
     loop {
         // Clear the screen
         clear_background(BLACK);
 
+        let fps = (1.0 / get_frame_time()).round();
+        // Draw the FPS
+        draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
+
         // Add a point
         if is_mouse_button_down(MouseButton::Left) {
-            objects.push(VerletObject::new(mouse_position().into()));
+            let current_time = get_time();
+            if current_time - last_mouse_input > 0.1 {
+                last_mouse_input = current_time;
+                let mouse_position = mouse_position();
+
+                objects.push(VerletObject::new(Vec2::new(
+                    mouse_position.0,
+                    mouse_position.1,
+                )));
+            }
         }
 
         // Update the solver
