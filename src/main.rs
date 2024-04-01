@@ -54,6 +54,7 @@ impl Solver {
     pub fn update(&mut self, objects: &mut [VerletObject], dt: f32) {
         Self::apply_gravity(objects, &self.gravity);
         Self::apply_constraints(objects);
+        Self::solve_collisions(objects);
         Self::update_positions(objects, dt);
     }
 
@@ -80,6 +81,24 @@ impl Solver {
             }
         }
     }
+
+    fn solve_collisions(objects: &mut [VerletObject]) {
+        // Brute force O(n^2) collision detection
+        let object_count = objects.len();
+        for i in 0..object_count {
+            for j in i + 1..object_count {
+                let collision_axis = objects[i].get_position() - objects[j].get_position();
+                let distance: f32 = collision_axis.length();
+                if distance < 2.0 * RADIUS {
+                    // Collision detected
+                    let n = collision_axis / distance;
+                    let delta: f32 = 2.0 * RADIUS - distance;
+                    objects[i].position_current += 0.5 * delta * n;
+                    objects[j].position_current -= 0.5 * delta * n;
+                }
+            }
+        }
+    }
 }
 
 #[macroquad::main("BasicShapes")]
@@ -96,21 +115,29 @@ async fn main() {
         // Clear the screen
         clear_background(BLACK);
 
+        // Add a point
+        if is_mouse_button_down(MouseButton::Left) {
+            objects.push(VerletObject::new(mouse_position().into()));
+        }
+
         // Update the solver
         solver.update(&mut objects, get_frame_time());
 
         // Draw the constraint circle
         draw_poly_lines(400., 300., 100, CONSTRAINT_RADIUS, 0., 1., WHITE);
 
-        // Draw the point
-        draw_circle(
-            objects[0].get_position().x,
-            objects[0].get_position().y,
-            RADIUS,
-            RED,
-        );
+        // Draw the points
+        for object in objects.iter() {
+            draw_circle(
+                object.get_position().x,
+                object.get_position().y,
+                RADIUS,
+                WHITE,
+            );
+        }
 
-        info!("Point pos: {:?}", objects[0].get_position());
+        // info!("First point pos: {:?}", objects[0].get_position());
+        info!("Len: {}", objects.len());
 
         // Finish the frame
         next_frame().await
