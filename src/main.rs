@@ -171,10 +171,16 @@ async fn main() {
         let screen_width = screen_width();
         let screen_height = screen_height();
 
+        // If the space is pressed, clear the points
+        if is_key_pressed(KeyCode::Space) {
+            objects.clear();
+        }
+
         // Setup the center of the constraint circle
         let constraint_center = Vec2::new(screen_width / 2.0, screen_height / 2.0);
 
         let fps = (1.0 / get_frame_time()).round();
+
         // Draw the FPS
         draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
         // Draw the object amount
