@@ -1,9 +1,9 @@
 use macroquad::prelude::*;
 use rayon::prelude::*;
 
-const RADIUS: f32 = 5.0;
-const CONSTRAINT_RADIUS: f32 = 250.0;
-const SUBSTEPS: u32 = 10;
+const RADIUS: f32 = 3.0;
+// const CONSTRAINT_RADIUS: f32 = 300.0;
+const SUBSTEPS: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VerletObject {
@@ -75,13 +75,15 @@ impl Solver {
     }
 
     fn apply_constraints(objects: &mut [VerletObject]) {
-        let position: Vec2 = Vec2::new(400.0, 300.0);
+        let screen_width = screen_width();
+        let screen_height = screen_height();
+        let position: Vec2 = Vec2::new(screen_width / 2.0, screen_height / 2.0);
         for object in objects.iter_mut() {
             let to_obj = object.get_position() - position;
             let distance = to_obj.length();
-            if distance > CONSTRAINT_RADIUS - RADIUS {
+            if distance > screen_width / 4.0 - RADIUS {
                 let n = to_obj / distance; // TODO: maybe normalize?
-                object.position_current = position + n * (CONSTRAINT_RADIUS - RADIUS);
+                object.position_current = position + n * (screen_width / 4.0 - RADIUS);
             }
         }
     }
@@ -105,6 +107,52 @@ impl Solver {
     }
 }
 
+fn convert_velocity_to_color(velocity: Vec2) -> Color {
+    // slow - blue
+    // medium - green
+    // fast - red
+    // so this is hue shift from blue to red
+
+    let speed = velocity.length();
+    let max_speed = 5.0;
+
+    // clamp speed to [0, max_speed]
+    let clamped_speed = speed.min(max_speed);
+
+    // map speed to [0, 1]
+    let normalized_speed = clamped_speed / max_speed;
+
+    // map speed to hue in [240, 0] (blue to red in HSL color space)
+    let hue = 240.0 * (1.0 - normalized_speed);
+
+    // convert HSL to RGB
+    let (r, g, b) = hsl_to_rgb(hue, 1.0, 0.5);
+
+    Color::new(r, g, b, 1.0)
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+
+    let (rp, gp, bp) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    (rp + m, gp + m, bp + m)
+}
+
 #[macroquad::main("BasicShapes")]
 async fn main() {
     // Setup a point in the middle of the screen
@@ -120,9 +168,23 @@ async fn main() {
         // Clear the screen
         clear_background(BLACK);
 
+        let screen_width = screen_width();
+        let screen_height = screen_height();
+
+        // Setup the center of the constraint circle
+        let constraint_center = Vec2::new(screen_width / 2.0, screen_height / 2.0);
+
         let fps = (1.0 / get_frame_time()).round();
         // Draw the FPS
         draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
+        // Draw the object amount
+        draw_text(
+            &format!("Objects: {}", objects.len()),
+            10.0,
+            40.0,
+            20.0,
+            WHITE,
+        );
 
         // Add a point
         if is_mouse_button_down(MouseButton::Left) {
@@ -130,7 +192,6 @@ async fn main() {
             if current_time - last_mouse_input > 0.01 {
                 last_mouse_input = current_time;
                 let mouse_position = mouse_position();
-
                 objects.push(VerletObject::new(Vec2::new(
                     mouse_position.0,
                     mouse_position.1,
@@ -142,7 +203,15 @@ async fn main() {
         solver.update(&mut objects, get_frame_time());
 
         // Draw the constraint circle
-        draw_poly_lines(400., 300., 100, CONSTRAINT_RADIUS, 0., 1., WHITE);
+        draw_poly_lines(
+            constraint_center.x,
+            constraint_center.y,
+            100,
+            screen_width / 4.0,
+            0.,
+            1.,
+            WHITE,
+        );
 
         // Draw the points
         for object in objects.iter() {
@@ -150,12 +219,12 @@ async fn main() {
                 object.get_position().x,
                 object.get_position().y,
                 RADIUS,
-                WHITE,
+                convert_velocity_to_color(object.get_position() - object.position_old),
             );
         }
 
         // info!("First point pos: {:?}", objects[0].get_position());
-        info!("Len: {}", objects.len());
+        // info!("Len: {}", objects.len());
 
         // Finish the frame
         next_frame().await
