@@ -3,7 +3,7 @@ use rayon::prelude::*;
 
 const RADIUS: f32 = 3.0;
 // const CONSTRAINT_RADIUS: f32 = 300.0;
-const SUBSTEPS: u32 = 8;
+// const SUBSTEPS: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VerletObject {
@@ -52,9 +52,9 @@ impl Solver {
         }
     }
 
-    pub fn update(&mut self, objects: &mut [VerletObject], dt: f32) {
-        let sub_dt = dt / SUBSTEPS as f32;
-        for _ in 0..SUBSTEPS {
+    pub fn update(&mut self, objects: &mut [VerletObject], dt: f32, substeps: u32) {
+        let sub_dt = dt / substeps as f32;
+        for _ in 0..substeps {
             Self::apply_gravity(objects, &self.gravity);
             Self::apply_constraints(objects);
             Self::solve_collisions(objects);
@@ -164,6 +164,8 @@ async fn main() {
     let mut solver = Solver::new();
     let mut last_mouse_input: f64 = 0.0;
 
+    let mut substeps = 8;
+
     loop {
         // Clear the screen
         clear_background(BLACK);
@@ -176,18 +178,37 @@ async fn main() {
             objects.clear();
         }
 
+        // Change the number of substeps
+        let (_, mouse_wheel_y) = mouse_wheel();
+        if mouse_wheel_y > 0.0 {
+            substeps = (substeps + 1).min(32);
+        } else if mouse_wheel_y < 0.0 {
+            substeps = (substeps - 1).max(1);
+        }
+
         // Setup the center of the constraint circle
         let constraint_center = Vec2::new(screen_width / 2.0, screen_height / 2.0);
 
         let fps = (1.0 / get_frame_time()).round();
 
-        // Draw the FPS
+        // Top left text
         draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
-        // Draw the object amount
         draw_text(
             &format!("Objects: {}", objects.len()),
             10.0,
             40.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(&format!("Substeps: {}", substeps), 10.0, 60.0, 20.0, WHITE);
+
+        // Top right text
+        draw_text("CLICK TO ADD POINT", screen_width - 165., 20.0, 20.0, WHITE);
+        draw_text("SPACE TO CLEAR", screen_width - 132., 40.0, 20.0, WHITE);
+        draw_text(
+            "SCROLL TO CHANGE SUBSTEPS",
+            screen_width - 228.,
+            60.0,
             20.0,
             WHITE,
         );
@@ -206,7 +227,7 @@ async fn main() {
         }
 
         // Update the solver
-        solver.update(&mut objects, get_frame_time());
+        solver.update(&mut objects, get_frame_time(), substeps);
 
         // Draw the constraint circle
         draw_poly_lines(
