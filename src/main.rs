@@ -48,19 +48,27 @@ pub struct DebugTimeInfo {
     pub update_positions_time: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Solver {
     gravity: Vec2,
+    // grid: Vec<Vec<Vec<usize>>>, // 1d 2d vec of point IDs
 }
 
 impl Solver {
     pub fn new() -> Self {
+        // seperate the grid into RADIUS * 2 x RADIUS * 2 squares
         Solver {
             gravity: Vec2::new(0.0, 1000.0),
+            // grid: vec![vec![vec![]]],
         }
     }
 
-    pub fn update(&mut self, objects: &mut [VerletObject], dt: f32, substeps: u32) -> DebugTimeInfo {
+    pub fn update(
+        &mut self,
+        objects: &mut [VerletObject],
+        dt: f32,
+        substeps: u32,
+    ) -> DebugTimeInfo {
         let sub_dt = dt / substeps as f32;
         let mut gravity_time = 0.0;
         let mut constraints_time = 0.0;
@@ -80,13 +88,19 @@ impl Solver {
         }
     }
 
+    // fn group_into_squares(&mut self, objects: &mut [VerletObject]) {
+    //     let screen_width = screen_width();
+    //     let screen_height = screen_height();
+    //     // The grid is RADIUS * 2 x RADIUS * 2 px
+    //     let grid_width = RADIUS * 2.0;
+    //     }
+
     fn apply_gravity(objects: &mut [VerletObject], gravity: &Vec2) -> f32 {
         let now = std::time::Instant::now();
         for object in objects.iter_mut() {
             object.accelerate(*gravity);
         }
         now.elapsed().as_secs_f32()
-
     }
 
     fn update_positions(objects: &mut [VerletObject], dt: f32) -> f32 {
@@ -95,27 +109,33 @@ impl Solver {
             object.update_position(dt);
         });
         now.elapsed().as_secs_f32()
-        
     }
-
 
     fn apply_constraints(objects: &mut [VerletObject]) -> f32 {
         let now = std::time::Instant::now();
         let screen_width = screen_width();
         let screen_height = screen_height();
-        let position: Vec2 = Vec2::new(screen_width / 2.0, screen_height / 2.0);
         for object in objects.iter_mut() {
-            let to_obj = object.get_position() - position;
-            let distance = to_obj.length();
-            if distance > screen_width / 4.0 - RADIUS {
-                let n = to_obj / distance; // TODO: maybe normalize?
-                object.position_current = position + n * (screen_width / 4.0 - RADIUS);
+            // TODO: if the object is above, dont check below
+            if object.get_position().x < 0.0 + RADIUS + 1.0 {
+                // radius and 1 for border
+                object.position_current.x = 0.0 + RADIUS + 1.0;
+            }
+            if object.get_position().x > screen_width - RADIUS  - 1.0 {
+                object.position_current.x = screen_width - RADIUS - 1.0;
+            }
+            if object.get_position().y < 0.0 + RADIUS + 1.0 {
+                object.position_current.y = 0.0 + RADIUS  + 1.0;
+            }
+            if object.get_position().y > screen_height - RADIUS - 1.0 {
+                object.position_current.y = screen_height - RADIUS - 1.0;
             }
         }
         now.elapsed().as_secs_f32()
     }
 
-    fn solve_collisions(objects: &mut [VerletObject]) -> f32 { // returns time in seconds
+    fn solve_collisions(objects: &mut [VerletObject]) -> f32 {
+        // returns time in seconds
         // Brute force O(n^2) collision detection
         let now = std::time::Instant::now();
         let object_count = objects.len();
@@ -135,6 +155,8 @@ impl Solver {
 
         now.elapsed().as_secs_f32()
     }
+
+    
 }
 
 fn convert_velocity_to_color(velocity: Vec2) -> Color {
@@ -216,9 +238,6 @@ async fn main() {
             substeps = (substeps - 1).max(1);
         }
 
-        // Setup the center of the constraint circle
-        let constraint_center = Vec2::new(screen_width / 2.0, screen_height / 2.0);
-
         let fps = (1.0 / get_frame_time()).round();
 
         // Add a point
@@ -237,16 +256,8 @@ async fn main() {
         // Update the solver
         let timings = solver.update(&mut objects, get_frame_time(), substeps);
 
-        // Draw the constraint circle
-        draw_poly_lines(
-            constraint_center.x,
-            constraint_center.y,
-            100,
-            screen_width / 4.0,
-            0.,
-            1.,
-            WHITE,
-        );
+        // Draw the constraint (entire screen)
+        draw_rectangle_lines(0.0, 0.0, screen_width, screen_height, 2.0, WHITE);
 
         // Draw the points
         for object in objects.iter() {
@@ -260,7 +271,7 @@ async fn main() {
 
         // info!("First point pos: {:?}", objects[0].get_position());
         // info!("Len: {}", objects.len());
-        
+
         // Top left text
         draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
         draw_text(
