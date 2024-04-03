@@ -121,6 +121,7 @@ impl Solver {
         let object_count = objects.len();
         for i in 0..object_count {
             for j in i + 1..object_count {
+                // Check if there is a collision
                 let collision_axis = objects[i].get_position() - objects[j].get_position();
                 let distance: f32 = collision_axis.length();
                 if distance < 2.0 * RADIUS {
