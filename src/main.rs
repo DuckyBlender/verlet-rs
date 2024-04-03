@@ -41,6 +41,14 @@ impl VerletObject {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+pub struct DebugTimeInfo {
+    pub gravity_time: f32,
+    pub constraints_time: f32,
+    pub collisions_time: f32,
+    pub update_positions_time: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Solver {
     gravity: Vec2,
 }
@@ -52,29 +60,47 @@ impl Solver {
         }
     }
 
-    pub fn update(&mut self, objects: &mut [VerletObject], dt: f32, substeps: u32) {
+    pub fn update(&mut self, objects: &mut [VerletObject], dt: f32, substeps: u32) -> DebugTimeInfo {
         let sub_dt = dt / substeps as f32;
+        let mut gravity_time = 0.0;
+        let mut constraints_time = 0.0;
+        let mut collisions_time = 0.0;
+        let mut update_positions_time = 0.0;
         for _ in 0..substeps {
-            Self::apply_gravity(objects, &self.gravity);
-            Self::apply_constraints(objects);
-            Self::solve_collisions(objects);
-            Self::update_positions(objects, sub_dt);
+            gravity_time += Self::apply_gravity(objects, &self.gravity);
+            constraints_time += Self::apply_constraints(objects);
+            collisions_time += Self::solve_collisions(objects);
+            update_positions_time += Self::update_positions(objects, sub_dt);
+        }
+        DebugTimeInfo {
+            gravity_time,
+            constraints_time,
+            collisions_time,
+            update_positions_time,
         }
     }
 
-    fn apply_gravity(objects: &mut [VerletObject], gravity: &Vec2) {
+    fn apply_gravity(objects: &mut [VerletObject], gravity: &Vec2) -> f32 {
+        let now = std::time::Instant::now();
         for object in objects.iter_mut() {
             object.accelerate(*gravity);
         }
+        now.elapsed().as_secs_f32()
+
     }
 
-    fn update_positions(objects: &mut [VerletObject], dt: f32) {
+    fn update_positions(objects: &mut [VerletObject], dt: f32) -> f32 {
+        let now = std::time::Instant::now();
         objects.par_iter_mut().for_each(|object| {
             object.update_position(dt);
         });
+        now.elapsed().as_secs_f32()
+        
     }
 
-    fn apply_constraints(objects: &mut [VerletObject]) {
+
+    fn apply_constraints(objects: &mut [VerletObject]) -> f32 {
+        let now = std::time::Instant::now();
         let screen_width = screen_width();
         let screen_height = screen_height();
         let position: Vec2 = Vec2::new(screen_width / 2.0, screen_height / 2.0);
@@ -86,10 +112,12 @@ impl Solver {
                 object.position_current = position + n * (screen_width / 4.0 - RADIUS);
             }
         }
+        now.elapsed().as_secs_f32()
     }
 
-    fn solve_collisions(objects: &mut [VerletObject]) {
+    fn solve_collisions(objects: &mut [VerletObject]) -> f32 { // returns time in seconds
         // Brute force O(n^2) collision detection
+        let now = std::time::Instant::now();
         let object_count = objects.len();
         for i in 0..object_count {
             for j in i + 1..object_count {
@@ -104,6 +132,8 @@ impl Solver {
                 }
             }
         }
+
+        now.elapsed().as_secs_f32()
     }
 }
 
@@ -191,28 +221,6 @@ async fn main() {
 
         let fps = (1.0 / get_frame_time()).round();
 
-        // Top left text
-        draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
-        draw_text(
-            &format!("Objects: {}", objects.len()),
-            10.0,
-            40.0,
-            20.0,
-            WHITE,
-        );
-        draw_text(&format!("Substeps: {}", substeps), 10.0, 60.0, 20.0, WHITE);
-
-        // Top right text
-        draw_text("CLICK TO ADD POINT", screen_width - 165., 20.0, 20.0, WHITE);
-        draw_text("SPACE TO CLEAR", screen_width - 132., 40.0, 20.0, WHITE);
-        draw_text(
-            "SCROLL TO CHANGE SUBSTEPS",
-            screen_width - 228.,
-            60.0,
-            20.0,
-            WHITE,
-        );
-
         // Add a point
         if is_mouse_button_down(MouseButton::Left) {
             let current_time = get_time();
@@ -227,7 +235,7 @@ async fn main() {
         }
 
         // Update the solver
-        solver.update(&mut objects, get_frame_time(), substeps);
+        let timings = solver.update(&mut objects, get_frame_time(), substeps);
 
         // Draw the constraint circle
         draw_poly_lines(
@@ -252,6 +260,61 @@ async fn main() {
 
         // info!("First point pos: {:?}", objects[0].get_position());
         // info!("Len: {}", objects.len());
+        
+        // Top left text
+        draw_text(&format!("FPS: {}", fps), 10.0, 20.0, 20.0, WHITE);
+        draw_text(
+            &format!("Objects: {}", objects.len()),
+            10.0,
+            40.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(&format!("Substeps: {}", substeps), 10.0, 60.0, 20.0, WHITE);
+
+        // Top right text
+        draw_text("CLICK TO ADD POINT", screen_width - 165., 20.0, 20.0, WHITE);
+        draw_text("SPACE TO CLEAR", screen_width - 132., 40.0, 20.0, WHITE);
+        draw_text(
+            "SCROLL TO CHANGE SUBSTEPS",
+            screen_width - 228.,
+            60.0,
+            20.0,
+            WHITE,
+        );
+
+        // Draw the timings in the bottom left
+        draw_text(
+            &format!("Gravity: {:.2}ms", timings.gravity_time * 1000.0),
+            10.0,
+            screen_height - 80.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(
+            &format!("Constraints: {:.2}ms", timings.constraints_time * 1000.0),
+            10.0,
+            screen_height - 60.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(
+            &format!("Collisions: {:.2}ms", timings.collisions_time * 1000.0),
+            10.0,
+            screen_height - 40.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(
+            &format!(
+                "Update Positions: {:.2}ms",
+                timings.update_positions_time * 1000.0
+            ),
+            10.0,
+            screen_height - 20.0,
+            20.0,
+            WHITE,
+        );
 
         // Finish the frame
         next_frame().await
